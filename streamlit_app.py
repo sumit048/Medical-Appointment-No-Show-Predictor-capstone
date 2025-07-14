@@ -7,16 +7,14 @@ from datetime import datetime
 from twilio.rest import Client
 
 def send_sms(to_number, message_body):
-    # Replace these with your actual credentials securely 
     account_sid = st.secrets["TWILIO_SID"]
     auth_token = st.secrets["TWILIO_TOKEN"]
-    twilio_number = st.secrets["TWILIO_NUMBER"]# your Twilio number or messaging_service_sid
-
+    twilio_number = st.secrets["TWILIO_NUMBER"]
     client = Client(account_sid, auth_token)
 
     message = client.messages.create(
         body=message_body,
-        from_=twilio_number,  # if using Messaging SID, replace with messaging_service_sid=...
+        from_=twilio_number,
         to=to_number
     )
     return message.sid
@@ -43,7 +41,6 @@ def add_corner_logo(image_path):
         unsafe_allow_html=True
     )
 
-# Add logo to top-left
 add_corner_logo("doctor_logo.jpg")
 
 # Load trained model
@@ -52,8 +49,10 @@ with open("model/no_show_model.pkl", "rb") as f:
 
 # Title
 st.title("🩺 Medical Appointment No-Show Predictor")
-
 st.header("Enter Patient Details")
+
+# 🆕 Add Patient ID
+patient_id = st.text_input("🆔 Patient ID", placeholder="Enter unique Patient ID")
 
 # Inputs
 age = st.number_input("Age", min_value=0, max_value=115, value=30)
@@ -76,11 +75,9 @@ with col6:
     handcap = st.selectbox("Handicap Level", [0, 1, 2, 3, 4])
 
 sms_received = st.checkbox("SMS Received")
-
-# Phone Number Input
 phone_number = st.text_input("📞 Patient Mobile Number (with country code)", placeholder="+91XXXXXXXXXX")
 
-# Prepare DataFrame
+# Prepare Input
 input_df = pd.DataFrame([{
     'Age': age,
     'Gender': 0 if gender == "Female" else 1,
@@ -93,7 +90,10 @@ input_df = pd.DataFrame([{
     'DaysBetween': days_between
 }])
 
-# Centered Predict Button
+# 🆕 Add Patient ID (for reference only)
+input_df['PatientID'] = patient_id
+
+# Predict Button
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
     predict_button = st.button("🔍 Predict", use_container_width=True)
@@ -102,9 +102,8 @@ if predict_button:
     with open("model/feature_order.json", "r") as f:
         feature_order = json.load(f)
 
-    input_df = input_df[feature_order]
-    prediction = model.predict(input_df)[0]
-    st.write("🔍 Raw prediction from model:", prediction)
+    input_for_model = input_df[feature_order]
+    prediction = model.predict(input_for_model)[0]
 
     if prediction == 1:
         st.markdown("""
@@ -112,17 +111,11 @@ if predict_button:
                 <img src="https://cdn-icons-png.flaticon.com/512/463/463612.png" width="80"/>
                 <h3 style="color:white; margin-top:10px;">❌ Patient likely to NOT SHOW UP for the appointment</h3>
             </div>
-            <style>
-                @keyframes fadeIn {
-                    from {opacity: 0;}
-                    to {opacity: 1;}
-                }
-            </style>
         """, unsafe_allow_html=True)
 
         if phone_number.strip():
             try:
-                sms_result = send_sms(
+                send_sms(
                     to_number=phone_number.strip(),
                     message_body="🚨 Reminder: You might miss your medical appointment. Please confirm or reschedule."
                 )
@@ -138,15 +131,9 @@ if predict_button:
                 <img src="https://cdn-icons-png.flaticon.com/512/845/845646.png" width="80"/>
                 <h3 style="color:white; margin-top:10px;">✅ Patient likely to SHOW UP for the appointment</h3>
             </div>
-            <style>
-                @keyframes fadeIn {
-                    from {opacity: 0;}
-                    to {opacity: 1;}
-                }
-            </style>
         """, unsafe_allow_html=True)
 
-# Batch Prediction Section
+# 📁 Batch Prediction Section
 st.header("📁 Batch Prediction (Upload CSV)")
 uploaded_file = st.file_uploader("Upload CSV file for batch prediction", type=["csv"])
 
@@ -156,8 +143,8 @@ if uploaded_file is not None:
         with open("model/feature_order.json", "r") as f:
             feature_order = json.load(f)
 
-        df_uploaded = df_uploaded[feature_order]
-        preds = model.predict(df_uploaded)
+        X = df_uploaded[feature_order]
+        preds = model.predict(X)
 
         df_uploaded["Prediction"] = preds
         df_uploaded["Prediction Result"] = df_uploaded["Prediction"].map({
